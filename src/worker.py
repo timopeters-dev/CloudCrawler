@@ -1,3 +1,4 @@
+import os
 import asyncio
 import json
 import boto3
@@ -8,9 +9,9 @@ from parsers.book_parser import BookParser
 from parsers.quote_parser import QuoteParser
 
 # --- Konfiguration ---
-SQS_ENDPOINT = "http://localhost:4566"
+SQS_ENDPOINT = os.getenv("SQS_ENDPOINT", "http://localhost:4566")
 QUEUE_NAME = "scraping-tasks"
-MONGO_URI = "mongodb://localhost:27017"
+MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017")
 
 class UniversalWorker:
     def __init__(self):
@@ -31,7 +32,15 @@ class UniversalWorker:
 
     async def run(self):
         print("[*] Worker gestartet. Warte auf Aufgaben in SQS...")
-        queue_url = self.sqs.get_queue_url(QueueName=QUEUE_NAME)['QueueUrl']
+        queue_url = None
+        while not queue_url:
+            try:
+                queue_url = self.sqs.get_queue_url(QueueName=QUEUE_NAME)['QueueUrl']
+            except Exception:
+                print(f"[-] Queue '{QUEUE_NAME}' noch nicht bereit. Warte 2 Sekunden...")
+                await asyncio.sleep(2)
+    
+        print(f"[+] Queue gefunden: {queue_url}. Warte auf Aufgaben...")
 
         async with httpx.AsyncClient() as http_client:
             while True:

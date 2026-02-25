@@ -1,21 +1,66 @@
-name: cloud_crawler 
+name: cloud_crawler
 
 services:
-  # LocalStack simuliert AWS Services lokal
+  mongodb:
+    image: mongo:latest
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+
   localstack:
     image: localstack/localstack
     ports:
-      - "4566:4566"            # Standard-Port für alle AWS Services
+      - "4566:4566"
     environment:
-      - SERVICES=sqs           # Wir brauchen nur SQS
-      - DEFAULT_REGION=us-east-1
+      - SERVICES=sqs
     volumes:
       - "./localstack_data:/var/lib/localstack:z"
 
-  # Unsere NoSQL Datenbank
-  mongodb:
-    image: mongo
-    ports:
-      - "27017:27017"
+  init-sqs:
+    build: .
+    depends_on:
+      - localstack
     environment:
-      - MONGO_INITDB_DATABASE=crawler_db
+      - SQS_ENDPOINT=http://localstack:4566
+      - AWS_ACCESS_KEY_ID=test
+      - AWS_SECRET_ACCESS_KEY=test
+      - AWS_DEFAULT_REGION=us-east-1
+    command: python infrastructure/setup_sqs.py
+
+  worker:
+    build: .
+    depends_on:
+      - mongodb
+      - localstack
+      - init-sqs
+    environment:
+      - SQS_ENDPOINT=http://localstack:4566
+      - MONGO_URI=mongodb://mongodb:27017
+      - AWS_ACCESS_KEY_ID=test
+      - AWS_SECRET_ACCESS_KEY=test
+      - AWS_DEFAULT_REGION=us-east-1
+
+  dashboard:
+    build: .
+    ports:
+      - "8501:8501"
+    depends_on:
+      - mongodb
+      - localstack
+    privileged: true
+    user: root
+    environment:
+      - SQS_ENDPOINT=http://localstack:4566
+      - MONGO_URI=mongodb://mongodb:27017
+      - AWS_ACCESS_KEY_ID=test
+      - AWS_SECRET_ACCESS_KEY=test
+      - AWS_DEFAULT_REGION=us-east-1
+    volumes:
+      # Damit wir aus dem Container heraus die anderen Docker-Container zählen können:
+      - /var/run/docker.sock:/var/run/docker.sock:ro,z
+      # Das Dashboard-Skript live in den Container mounten:
+      - ./dashboard.py:/app/dashboard.py:ro,z 
+    command: streamlit run dashboard.py --server.address=0.0.0.0
+volumes:
+  mongo_data:

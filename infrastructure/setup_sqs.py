@@ -29,7 +29,10 @@ class CloudManager:
             return self.sqs.create_queue(QueueName=queue_name)
 
 if __name__ == "__main__":
-    # Testlauf
-    manager = CloudManager()
-    my_queue = manager.get_or_create_queue("crawler-queue")
+    import os
+    # SQS_ENDPOINT kommt aus der docker-compose environment Sektion
+    endpoint = os.getenv("SQS_ENDPOINT", "http://localstack:4566")
+    manager = CloudManager(endpoint_url=endpoint)
+    # WICHTIG: Name muss mit dem Worker übereinstimmen!
+    my_queue = manager.get_or_create_queue("scraping-tasks") 
     print(f"Queue URL: {my_queue.url}")

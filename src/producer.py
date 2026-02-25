@@ -1,10 +1,11 @@
+import os
 import boto3
 import json
 
 # --- Konfiguration ---
-SQS_ENDPOINT = "http://localhost:4566"  # LocalStack
-QUEUE_NAME = "scraping-tasks"
+SQS_ENDPOINT = os.getenv("SQS_ENDPOINT", "http://localhost:4566")
 REGION = "us-east-1"
+QUEUE_NAME = "scraping-tasks"
 
 class ScrapingProducer:
     def __init__(self):
@@ -41,15 +42,8 @@ class ScrapingProducer:
 # --- Test-Lauf ---
 if __name__ == "__main__":
     producer = ScrapingProducer()
-    
-    # Hier definieren wir unsere n Websites
-    tasks = [
-        ("http://books.toscrape.com/catalogue/a-light-in-the-attic_1000/index.html", "books"),
-        ("http://quotes.toscrape.com/page/1/", "quotes")
-        ]
-
-    print(f"[*] Sende {len(tasks)} Aufgaben an die Queue...")
-    for url, t_type in tasks:
-        producer.send_task(url, task_type=t_type)
-    
+    print("[*] Starte Massen-Versand...")
+    for i in range(50):
+        url = f"http://books.toscrape.com/catalogue/page-{ (i % 50) + 1 }.html"
+        producer.send_task(url, task_type="books")    
     print("[*] Fertig! Die Worker können jetzt loslegen.")

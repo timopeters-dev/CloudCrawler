@@ -1,0 +1,9 @@
+boto3>=1.35.0
+httpx>=0.28.0
+beautifulsoup4>=4.12.3
+pydantic>=2.10.0
+motor>=3.6.0
+pymongo>=4.9.0
+streamlit
+pandas
+docker
