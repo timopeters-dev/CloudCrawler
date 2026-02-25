@@ -1,0 +1,21 @@
+name: cloud_crawler 
+
+services:
+  # LocalStack simuliert AWS Services lokal
+  localstack:
+    image: localstack/localstack
+    ports:
+      - "4566:4566"            # Standard-Port für alle AWS Services
+    environment:
+      - SERVICES=sqs           # Wir brauchen nur SQS
+      - DEFAULT_REGION=us-east-1
+    volumes:
+      - "./localstack_data:/var/lib/localstack:z"
+
+  # Unsere NoSQL Datenbank
+  mongodb:
+    image: mongo
+    ports:
+      - "27017:27017"
+    environment:
+      - MONGO_INITDB_DATABASE=crawler_db
