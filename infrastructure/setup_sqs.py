@@ -1,15 +1,16 @@
 import boto3
 import logging
+import os
+import time
+from botocore.exceptions import EndpointConnectionError
 
-# Logging konfigurieren, damit wir sehen, was passiert
+# Logging konfigurieren
 logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
 logger = logging.getLogger(__name__)
 
 class CloudManager:
     def __init__(self, endpoint_url: str = "http://localhost:4566"):
         self.endpoint_url = endpoint_url
-        # Wir erstellen einen SQS "Resource" Client
-        # Region 'us-east-1' ist bei LocalStack Standard
         self.sqs = boto3.resource(
             'sqs',
             endpoint_url=self.endpoint_url,
@@ -29,10 +30,21 @@ class CloudManager:
             return self.sqs.create_queue(QueueName=queue_name)
 
 if __name__ == "__main__":
-    import os
-    # SQS_ENDPOINT kommt aus der docker-compose environment Sektion
     endpoint = os.getenv("SQS_ENDPOINT", "http://localstack:4566")
     manager = CloudManager(endpoint_url=endpoint)
-    # WICHTIG: Name muss mit dem Worker übereinstimmen!
-    my_queue = manager.get_or_create_queue("scraping-tasks") 
-    print(f"Queue URL: {my_queue.url}")
+    
+    # Warteschleife: Wir probieren es bis zu 10-mal
+    max_retries = 10
+    for i in range(max_retries):
+        try:
+            my_queue = manager.get_or_create_queue("scraping-tasks")
+            logger.info(f"Queue erfolgreich initialisiert! URL: {my_queue.url}")
+            break  # Erfolgreich -> Schleife abbrechen
+        except EndpointConnectionError:
+            logger.warning(f"LocalStack noch nicht bereit (Versuch {i+1}/{max_retries}). Warte 3 Sekunden...")
+            time.sleep(3)
+        except Exception as e:
+            logger.error(f"Unerwarteter Fehler bei LocalStack: {e}")
+            time.sleep(3)
+    else:
+        logger.error("Konnte LocalStack nach 30 Sekunden nicht erreichen. Gebe auf.")

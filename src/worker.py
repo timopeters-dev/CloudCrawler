@@ -3,11 +3,12 @@ import asyncio
 import json
 import boto3
 import httpx
+from datetime import datetime, timezone
 from motor.motor_asyncio import AsyncIOMotorClient
+
 from parsers.book_parser import BookParser
 from parsers.quote_parser import QuoteParser
 
-# --- Konfiguration ---
 SQS_ENDPOINT = os.getenv("SQS_ENDPOINT", "http://localhost:4566")
 QUEUE_NAME = "scraping-tasks"
 MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017")
@@ -15,11 +16,8 @@ MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017")
 class UniversalWorker:
     def __init__(self):
         self.sqs = boto3.client(
-            'sqs', 
-            endpoint_url=SQS_ENDPOINT, 
-            region_name='us-east-1',
-            aws_access_key_id="test",
-            aws_secret_access_key="test"
+            'sqs', endpoint_url=SQS_ENDPOINT, region_name='us-east-1',
+            aws_access_key_id="test", aws_secret_access_key="test"
         )
         self.mongo = AsyncIOMotorClient(MONGO_URI)
         self.db = self.mongo["crawler_db"]
@@ -29,86 +27,77 @@ class UniversalWorker:
             "quotes": QuoteParser()
         }
 
-    async def process_single_message(self, msg, http_client, queue_url):
-        """Verarbeitet genau eine Nachricht. Läuft parallel zu anderen."""
-        receipt_handle = msg['ReceiptHandle']
-        
-        try:
-            body = json.loads(msg['Body'])
-            url = body['url']
-            task_type = body['type']
-            
-            print(f"[+] Verarbeite {task_type}: {url}")
-
-            res = await http_client.get(url, timeout=10.0)
-            res.raise_for_status() 
-            
-            parser = self.parsers.get(task_type)
-            if not parser:
-                raise ValueError(f"Kein Parser für Typ '{task_type}' gefunden!")
-
-            data = await parser.parse(res.text)
-
-            await self.db["results"].insert_one({
-                "url": url,
-                "data": data,
-                "scraped_at": "2026-03-06" # Angepasst an dein Datumsformat
-            })
-            
-            # Nachricht aus Queue löschen nach Erfolg
-            self.sqs.delete_message(QueueUrl=queue_url, ReceiptHandle=receipt_handle)
-            print(f"[V] Erledigt: {url}")
-
-        except json.JSONDecodeError:
-            print(f"[!] Kritischer Fehler: Ungültiges JSON. Lösche Nachricht.")
-            self.sqs.delete_message(QueueUrl=queue_url, ReceiptHandle=receipt_handle)
-
-        except ValueError as ve:
-            print(f"[!] Logik-Fehler: {ve}. Speichere in DB und lösche Nachricht.")
-            await self.db["failed_tasks"].insert_one({"error": str(ve), "msg": msg['Body']})
-            self.sqs.delete_message(QueueUrl=queue_url, ReceiptHandle=receipt_handle)
-
-        except Exception as e:
-            # Temporärer Fehler (Netzwerk, etc.). Kein Löschen -> Retry durch SQS
-            print(f"[-] Temporärer Fehler bei {receipt_handle[:10]}: {e}. Retry folgt.")
-
-
     async def run(self):
-        print("[*] Worker gestartet. Warte auf Aufgaben in SQS...")
+        print("[*] Standard-Worker gestartet. Warte auf Aufgaben...")
         queue_url = None
         while not queue_url:
             try:
                 queue_url = self.sqs.get_queue_url(QueueName=QUEUE_NAME)['QueueUrl']
             except Exception:
-                print(f"[-] Queue '{QUEUE_NAME}' noch nicht bereit. Warte 2 Sekunden...")
                 await asyncio.sleep(2)
-    
-        print(f"[+] Queue gefunden: {queue_url}. Warte auf Aufgaben...")
 
         async with httpx.AsyncClient() as http_client:
             while True:
-                # Wir holen jetzt bis zu 10 Nachrichten auf einmal!
                 response = self.sqs.receive_message(
-                    QueueUrl=queue_url,
-                    MaxNumberOfMessages=10, 
-                    WaitTimeSeconds=5
+                    QueueUrl=queue_url, MaxNumberOfMessages=1, WaitTimeSeconds=5
                 )
 
-                messages = response.get('Messages', [])
-                if not messages:
+                if 'Messages' not in response:
                     continue
-                
-                print(f"[*] {len(messages)} Nachrichten empfangen. Starte parallele Verarbeitung...")
 
-                # Erstelle Tasks für alle empfangenen Nachrichten
-                tasks = [
-                    self.process_single_message(msg, http_client, queue_url) 
-                    for msg in messages
-                ]
-                
-                # Führe alle Tasks gleichzeitig aus und warte, bis alle fertig sind
-                await asyncio.gather(*tasks)
+                for msg in response['Messages']:
+                    receipt_handle = msg['ReceiptHandle']
+                    
+                    try:
+                        body = json.loads(msg['Body'])
+                        url = body['url']
+                        task_type = body['type']
+                        
+                        print(f"[+] WORKER Verarbeite {task_type}: {url}")
 
+                        res = await http_client.get(url, timeout=10.0)
+                        res.raise_for_status() 
+                        
+                        parser = self.parsers.get(task_type)
+                        if not parser:
+                            raise ValueError(f"Kein Parser für Typ '{task_type}' gefunden!")
+
+                        data = await parser.parse(res.text)
+                        
+                        current_time = datetime.now(timezone.utc).isoformat()
+
+                        await self.db["results"].insert_one({
+                            "url": url, "data": data, "scraped_at": current_time
+                        })
+                        
+                        self.sqs.delete_message(QueueUrl=queue_url, ReceiptHandle=receipt_handle)
+                        print(f"[V] WORKER Erledigt!")
+
+                    except json.JSONDecodeError:
+                        self.sqs.delete_message(QueueUrl=queue_url, ReceiptHandle=receipt_handle)
+                        
+                    except ValueError as ve:
+                        await self.db["failed_tasks"].insert_one({"error": str(ve), "msg": msg['Body']})
+                        self.sqs.delete_message(QueueUrl=queue_url, ReceiptHandle=receipt_handle)
+                        
+                    # --- NEU: HTTP Fehler abfangen (wie 404, 403, 500) ---
+                    except httpx.HTTPStatusError as http_err:
+                        status = http_err.response.status_code
+                        # Bei 400er Fehlern (Client-Fehler wie 404 Not Found): Löschen und loggen!
+                        if 400 <= status < 500:
+                            print(f"[!] Permanenter HTTP Fehler {status} bei {url}. Breche ab.")
+                            await self.db["failed_tasks"].insert_one({
+                                "error": f"HTTP {status} (Not Found / Forbidden)", 
+                                "url": url
+                            })
+                            self.sqs.delete_message(QueueUrl=queue_url, ReceiptHandle=receipt_handle)
+                        else:
+                            # Bei 500er Fehlern (Server-Fehler): Nicht löschen, später erneut versuchen!
+                            print(f"[-] Temporärer Server-Fehler {status} bei {url}. Retry folgt automatisch.")
+                            
+                    # Netzwerk-Timeouts und generelle Ausnahmen
+                    except Exception as e:
+                        print(f"[-] Temporärer Netzwerk/System-Fehler: {e}. Retry folgt.")
 
 if __name__ == "__main__":
     worker = UniversalWorker()

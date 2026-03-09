@@ -41,6 +41,24 @@ services:
       - AWS_SECRET_ACCESS_KEY=test
       - AWS_DEFAULT_REGION=us-east-1
 
+  autoscaler:
+    build: .
+    depends_on:
+      - localstack
+      - init-sqs
+    user: root
+    privileged: true
+    environment:
+      - SQS_ENDPOINT=http://localstack:4566
+      - AWS_ACCESS_KEY_ID=test
+      - AWS_SECRET_ACCESS_KEY=test
+      - AWS_DEFAULT_REGION=us-east-1
+      - COMPOSE_PROJECT_NAME=cloud_crawler 
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:z
+      - ./docker-compose.yml:/app/docker-compose.yml:ro,z 
+    command: python -u src/autoscaler.py
+
   dashboard:
     build: .
     ports:
@@ -57,10 +75,9 @@ services:
       - AWS_SECRET_ACCESS_KEY=test
       - AWS_DEFAULT_REGION=us-east-1
     volumes:
-      # Damit wir aus dem Container heraus die anderen Docker-Container zählen können:
       - /var/run/docker.sock:/var/run/docker.sock:ro,z
-      # Das Dashboard-Skript live in den Container mounten:
       - ./dashboard.py:/app/dashboard.py:ro,z 
     command: streamlit run dashboard.py --server.address=0.0.0.0
+
 volumes:
   mongo_data:
