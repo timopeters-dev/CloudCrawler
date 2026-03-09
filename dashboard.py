@@ -65,31 +65,61 @@ show_metrics()
 
 st.markdown("---")
 
-# --- CONTROL PANEL (Ohne Auto-Update, damit man tippen kann) ---
+# --- CONTROL PANEL ---
 st.subheader("🚀 Control Panel: Neue Aufgaben starten")
-with st.form("control_panel"):
+
+# Wir merken uns im Hintergrund, wie viele Felder der Nutzer haben will (Standard: 1)
+if "field_count" not in st.session_state:
+    st.session_state.field_count = 1
+
+with st.container():
     col_a, col_b, col_c = st.columns([3, 1, 1])
     
     with col_a:
         base_url = st.text_input("Basis-URL", "http://books.toscrape.com/catalogue/page-{}.html")
-        st.caption("Nutze `{}` als Platzhalter, wenn du mehrere Seiten generieren willst.")
     with col_b:
-        task_type = st.selectbox("Parser-Typ", ["books", "quotes"])
+        task_type = st.selectbox("Parser-Typ", ["books", "quotes", "dynamic"])
     with col_c:
-        msg_count = st.number_input("Anzahl Nachrichten", min_value=1, max_value=1000, value=10)
+        msg_count = st.number_input("Anzahl", min_value=1, max_value=1000, value=1)
+
+    custom_selectors = {}
+    
+    if task_type == "dynamic":
+        st.info("🛠️ Custom Parser: Definiere beliebig viele Felder und ihre CSS-Selektoren.")
         
-    submitted = st.form_submit_button("In die Queue schieben")
+        # Wir generieren so viele Eingabefelder, wie im Counter stehen
+        for i in range(st.session_state.field_count):
+            col_x, col_y = st.columns(2)
+            with col_x:
+                # Wichtig: Eindeutige 'key' Argumente, damit Streamlit die Felder nicht verwechselt
+                field_name = st.text_input(f"Feldname {i+1}", key=f"name_{i}")
+            with col_y:
+                css_selector = st.text_input(f"CSS Selektor {i+1}", key=f"sel_{i}")
+                
+            if field_name and css_selector:
+                custom_selectors[field_name] = css_selector
+        
+        # Der Plus-Button erhöht den Counter und lädt die UI sofort neu
+        if st.button("➕ Weiteres Feld hinzufügen"):
+            st.session_state.field_count += 1
+            st.rerun()
+
+    submitted = st.button("In die Queue schieben", type="primary")
     
     if submitted:
         if not queue_url:
-            st.error("Kann keine Nachrichten senden: SQS Queue nicht gefunden!")
+            st.error("SQS Queue nicht gefunden!")
         else:
             with st.spinner(f"Sende {msg_count} Aufgaben an SQS..."):
                 for i in range(msg_count):
                     target_url = base_url.format(i + 1) if "{}" in base_url else base_url
+                    
                     message_body = {"url": target_url, "type": task_type}
+                    if task_type == "dynamic":
+                        message_body["selectors"] = custom_selectors
+                        
                     sqs.send_message(QueueUrl=queue_url, MessageBody=json.dumps(message_body))
-            st.success(f"Erfolgreich {msg_count} Tasks in die Queue geschoben!")
+            st.success(f"Erfolgreich {msg_count} Tasks geschickt!")
 
 st.markdown("---")
 

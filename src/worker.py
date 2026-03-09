@@ -6,6 +6,7 @@ import httpx
 from datetime import datetime, timezone
 from motor.motor_asyncio import AsyncIOMotorClient
 
+from parsers.dynamic_parser import DynamicParser
 from parsers.book_parser import BookParser
 from parsers.quote_parser import QuoteParser
 
@@ -58,11 +59,16 @@ class UniversalWorker:
                         res = await http_client.get(url, timeout=10.0)
                         res.raise_for_status() 
                         
-                        parser = self.parsers.get(task_type)
-                        if not parser:
-                            raise ValueError(f"Kein Parser für Typ '{task_type}' gefunden!")
-
-                        data = await parser.parse(res.text)
+                        if task_type == "dynamic":
+                            # Dynamischer Parser zieht sich die Selektoren aus der SQS Nachricht
+                            parser = DynamicParser()
+                            selectors = body.get("selectors", {})
+                            data = await parser.parse(res.text, selectors)
+                        else:
+                            parser = self.parsers.get(task_type)
+                            if not parser:
+                                raise ValueError(f"Kein Parser für Typ '{task_type}' gefunden!")
+                            data = await parser.parse(res.text)
                         
                         current_time = datetime.now(timezone.utc).isoformat()
 
@@ -80,10 +86,8 @@ class UniversalWorker:
                         await self.db["failed_tasks"].insert_one({"error": str(ve), "msg": msg['Body']})
                         self.sqs.delete_message(QueueUrl=queue_url, ReceiptHandle=receipt_handle)
                         
-                    # --- NEU: HTTP Fehler abfangen (wie 404, 403, 500) ---
                     except httpx.HTTPStatusError as http_err:
                         status = http_err.response.status_code
-                        # Bei 400er Fehlern (Client-Fehler wie 404 Not Found): Löschen und loggen!
                         if 400 <= status < 500:
                             print(f"[!] Permanenter HTTP Fehler {status} bei {url}. Breche ab.")
                             await self.db["failed_tasks"].insert_one({
@@ -92,10 +96,8 @@ class UniversalWorker:
                             })
                             self.sqs.delete_message(QueueUrl=queue_url, ReceiptHandle=receipt_handle)
                         else:
-                            # Bei 500er Fehlern (Server-Fehler): Nicht löschen, später erneut versuchen!
                             print(f"[-] Temporärer Server-Fehler {status} bei {url}. Retry folgt automatisch.")
                             
-                    # Netzwerk-Timeouts und generelle Ausnahmen
                     except Exception as e:
                         print(f"[-] Temporärer Netzwerk/System-Fehler: {e}. Retry folgt.")
 
