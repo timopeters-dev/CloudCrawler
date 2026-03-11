@@ -68,7 +68,6 @@ st.markdown("---")
 # --- CONTROL PANEL ---
 st.subheader("🚀 Control Panel: Neue Aufgaben starten")
 
-# Wir merken uns im Hintergrund, wie viele Felder der Nutzer haben will (Standard: 1)
 if "field_count" not in st.session_state:
     st.session_state.field_count = 1
 
@@ -87,11 +86,9 @@ with st.container():
     if task_type == "dynamic":
         st.info("🛠️ Custom Parser: Definiere beliebig viele Felder und ihre CSS-Selektoren.")
         
-        # Wir generieren so viele Eingabefelder, wie im Counter stehen
         for i in range(st.session_state.field_count):
             col_x, col_y = st.columns(2)
             with col_x:
-                # Wichtig: Eindeutige 'key' Argumente, damit Streamlit die Felder nicht verwechselt
                 field_name = st.text_input(f"Feldname {i+1}", key=f"name_{i}")
             with col_y:
                 css_selector = st.text_input(f"CSS Selektor {i+1}", key=f"sel_{i}")
@@ -99,7 +96,6 @@ with st.container():
             if field_name and css_selector:
                 custom_selectors[field_name] = css_selector
         
-        # Der Plus-Button erhöht den Counter und lädt die UI sofort neu
         if st.button("➕ Weiteres Feld hinzufügen"):
             st.session_state.field_count += 1
             st.rerun()
@@ -123,43 +119,86 @@ with st.container():
 
 st.markdown("---")
 
-# --- LIVE-DATEN (Updaten sich alle 2 Sekunden) ---
+# --- LIVE-DATEN & ANALYSEN (Updaten sich alle 2 Sekunden) ---
 @st.fragment(run_every="2s")
 def show_data():
-    tab1, tab2 = st.tabs(["📊 Ergebnisse", "⚠️ Fehler-Log"])
-
-    with tab1:
-        st.subheader("Neueste Ergebnisse")
-        results_cursor = db["results"].find().sort("_id", -1).limit(50)
-        results_list = list(results_cursor)
+    # Daten aus der MongoDB laden
+    results_cursor = db["results"].find().sort("_id", -1).limit(200) # Limit leicht erhöht für bessere Charts
+    results_list = list(results_cursor)
+    
+    # --- DATEN AUFBEREITEN (FLATTENING) ---
+    flat_data = []
+    for r in results_list:
+        base_row = {"url": r.get("url", ""), "scraped_at": r.get("scraped_at", "")}
+        data_field = r.get("data", {})
         
-        if results_list:
-            flat_data = []
-            for r in results_list:
-                # Basis-Daten für jede Zeile
-                base_row = {"url": r.get("url", ""), "scraped_at": r.get("scraped_at", "")}
-                data_field = r.get("data", {})
-            
-                # Fall 1: Das Datenbankfeld "data" ist eine Liste (unsere alten Ausrutscher)
-                if isinstance(data_field, list):
-                    for item in data_field:
-                        row = base_row.copy()
-                        if isinstance(item, dict):
-                            row.update(item)
-                        flat_data.append(row)
-                    
-                # Fall 2: Das Datenbankfeld "data" ist ein normales Dictionary (der saubere Standard)
-                elif isinstance(data_field, dict):
-                    row = base_row.copy()
-                    row.update(data_field)
-                    flat_data.append(row)
+        if isinstance(data_field, list):
+            for item in data_field:
+                row = base_row.copy()
+                if isinstance(item, dict):
+                    row.update(item)
+                flat_data.append(row)
+        elif isinstance(data_field, dict):
+            row = base_row.copy()
+            row.update(data_field)
+            flat_data.append(row)
 
-            if flat_data:
-                df = pd.DataFrame(flat_data)
-                st.dataframe(df, use_container_width=True)
-            else:
-                st.info("Noch keine Daten vorhanden.")
+    # Pandas DataFrame erstellen
+    df = pd.DataFrame(flat_data) if flat_data else pd.DataFrame()
+
+    # --- TABS FÜR DATEN, CHARTS UND FEHLER ---
+    tab1, tab2, tab3 = st.tabs(["📊 Daten-Tabelle", "📈 Analysen & Charts", "⚠️ Fehler-Log"])
+
+    # TAB 1: ROHDATEN
+    with tab1:
+        st.subheader("Rohdaten der gescrapten Seiten")
+        if not df.empty:
+            st.dataframe(df, use_container_width=True)
+        else:
+            st.info("Noch keine Daten vorhanden. Starte einen Scraping-Task!")
+
+    # TAB 2: ANALYSEN & CHARTS
     with tab2:
+        st.subheader("Visualisierung der Ergebnisse")
+        
+        if df.empty:
+            st.warning("Keine Daten zum Visualisieren vorhanden.")
+        else:
+            # 1. BUCH-ANALYSEN (Wenn die Spalte 'price' existiert)
+            if 'price' in df.columns:
+                st.markdown("### 📚 Buch-Preise")
+                
+                df_prices = df.dropna(subset=['price']).copy()
+                
+                # Nur zur Sicherheit in einen numerischen Datentyp umwandeln, 
+                # falls die DB ihn noch als String liefert:
+                df_prices['price'] = pd.to_numeric(df_prices['price'], errors='coerce')
+                df_prices = df_prices.dropna(subset=['price'])
+                
+                if not df_prices.empty:
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        st.metric(label="Durchschnittspreis", value=f"£{df_prices['price'].mean():.2f}")
+                    with col2:
+                        st.metric(label="Teuerstes Buch", value=f"£{df_prices['price'].max():.2f}")
+                        
+                    st.bar_chart(df_prices['price'].head(50))
+                
+            # 2. ZITAT-ANALYSEN (Wenn die Spalte 'author' existiert)
+            if 'author' in df.columns:
+                st.markdown("### ✍️ Top Autoren der Zitate")
+                
+                df_authors = df.dropna(subset=['author'])
+                author_counts = df_authors['author'].value_counts().head(10)
+                
+                st.bar_chart(author_counts)
+                
+            # Wenn weder Preis noch Autor existiert
+            if 'price' not in df.columns and 'author' not in df.columns:
+                st.info("Für diese Daten ist aktuell noch keine Standard-Visualisierung definiert.")
+
+    # TAB 3: FEHLER-LOG
+    with tab3:
         st.subheader("Zuletzt fehlgeschlagene Tasks")
         errors_cursor = db["failed_tasks"].find().sort("_id", -1).limit(50)
         errors_list = list(errors_cursor)
@@ -171,20 +210,17 @@ def show_data():
         else:
             st.success("Keine fehlerhaften Tasks gefunden. Alles läuft super!")
 
+# Fragment aufrufen
+show_data()
+
 # --- DANGER ZONE (In der Sidebar) ---
 st.sidebar.markdown("---")
 st.sidebar.subheader("⚠️ Danger Zone")
 
-# Ein Klick auf den Button leert die Collections
 if st.sidebar.button("🗑️ Datenbank leeren", type="primary"):
     with st.spinner("Lösche alle Dokumente..."):
-        # Löscht alle Einträge aus 'results' und 'failed_tasks'
         db["results"].delete_many({})
         db["failed_tasks"].delete_many({})
         
     st.sidebar.success("Datenbank erfolgreich geleert!")
-    # Lade die Seite neu, damit die leere Tabelle sofort angezeigt wird
     st.rerun()
-
-# Fragment aufrufen
-show_data()
