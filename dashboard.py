@@ -4,6 +4,8 @@ import json
 import os
 import pandas as pd
 from pymongo import MongoClient
+import matplotlib.pyplot as plt
+import seaborn as sns
 
 # --- Konfiguration ---
 SQS_ENDPOINT = os.getenv("SQS_ENDPOINT", "http://localhost:4566")
@@ -159,43 +161,75 @@ def show_data():
 
     # TAB 2: ANALYSEN & CHARTS
     with tab2:
-        st.subheader("Visualisierung der Ergebnisse")
+        st.subheader("📊 Erweiterte Daten-Visualisierung")
         
         if df.empty:
             st.warning("Keine Daten zum Visualisieren vorhanden.")
         else:
-            # 1. BUCH-ANALYSEN (Wenn die Spalte 'price' existiert)
-            if 'price' in df.columns:
-                st.markdown("### 📚 Buch-Preise")
-                
-                df_prices = df.dropna(subset=['price']).copy()
-                
-                # Nur zur Sicherheit in einen numerischen Datentyp umwandeln, 
-                # falls die DB ihn noch als String liefert:
-                df_prices['price'] = pd.to_numeric(df_prices['price'], errors='coerce')
-                df_prices = df_prices.dropna(subset=['price'])
-                
-                if not df_prices.empty:
-                    col1, col2 = st.columns(2)
-                    with col1:
-                        st.metric(label="Durchschnittspreis", value=f"£{df_prices['price'].mean():.2f}")
-                    with col2:
-                        st.metric(label="Teuerstes Buch", value=f"£{df_prices['price'].max():.2f}")
+            # --- 1. SCRAPING-GESCHWINDIGKEIT (TIMELINE) ---
+            st.markdown("### ⏱️ Scraping-Aktivität über Zeit")
+            if 'scraped_at' in df.columns:
+                # Zeitstempel in echtes Pandas-Datum umwandeln
+                df['scraped_at_dt'] = pd.to_datetime(df['scraped_at'])
+                # Zählen, wie viele Items pro Sekunde in die DB geschrieben wurden
+                timeline = df.set_index('scraped_at_dt').resample('S').size()
+                # Nur die Zeiträume anzeigen, in denen auch gescrapt wurde
+                timeline = timeline[timeline > 0] 
+                st.line_chart(timeline)
+                st.caption("Diese Kurve zeigt die parallele Arbeitskraft deiner Worker-Container.")
+                st.markdown("---")
+
+            col_links, col_rechts = st.columns(2)
+
+            with col_links:
+                # --- 2. BUCH-ANALYSEN (Seaborn Histogramm aus der Vorlesung!) ---
+                if 'price' in df.columns:
+                    st.markdown("### 📚 Preisverteilung (Histogramm)")
+                    df_prices = df.dropna(subset=['price']).copy()
+                    df_prices['price'] = pd.to_numeric(df_prices['price'], errors='coerce').dropna()
+                    
+                    if not df_prices.empty:
+                        # Wir nutzen Matplotlib & Seaborn, genau wie in Einheit 3!
+                        fig, ax = plt.subplots(figsize=(6, 4))
+                        sns.histplot(df_prices['price'], bins=15, kde=True, color="skyblue", ax=ax)
+                        ax.set_title('Häufigkeitsverteilung der Buchpreise')
+                        ax.set_xlabel('Preis in £')
+                        ax.set_ylabel('Anzahl')
+                        st.pyplot(fig) # Das rendert den Matplotlib-Plot in Streamlit!
                         
-                    st.bar_chart(df_prices['price'].head(50))
+                # --- 3. ZITAT-AUTOREN ---
+                if 'author' in df.columns:
+                    st.markdown("### ✍️ Top Autoren")
+                    df_authors = df.dropna(subset=['author'])
+                    author_counts = df_authors['author'].value_counts().head(7)
+                    st.bar_chart(author_counts)
+
+            with col_rechts:
+                # --- 4. ZITAT-TAGS (Listen entpacken) ---
+                if 'tags' in df.columns:
+                    st.markdown("### 🏷️ Beliebteste Kategorien (Tags)")
+                    df_tags = df.dropna(subset=['tags']).copy()
+                    # Pandas Magic: Macht aus einer Liste von Tags für jedes Tag eine eigene Zeile!
+                    df_exploded = df_tags.explode('tags')
+                    tag_counts = df_exploded['tags'].value_counts().head(10)
+                    st.bar_chart(tag_counts, color="#ffaa00")
+
+                # --- 5. SYSTEM-GESUNDHEIT (Pie Chart) ---
+                st.markdown("### ⚙️ System-Gesundheit")
+                total_success = db["results"].count_documents({})
+                total_errors = db["failed_tasks"].count_documents({})
                 
-            # 2. ZITAT-ANALYSEN (Wenn die Spalte 'author' existiert)
-            if 'author' in df.columns:
-                st.markdown("### ✍️ Top Autoren der Zitate")
-                
-                df_authors = df.dropna(subset=['author'])
-                author_counts = df_authors['author'].value_counts().head(10)
-                
-                st.bar_chart(author_counts)
-                
-            # Wenn weder Preis noch Autor existiert
-            if 'price' not in df.columns and 'author' not in df.columns:
-                st.info("Für diese Daten ist aktuell noch keine Standard-Visualisierung definiert.")
+                if total_success > 0 or total_errors > 0:
+                    fig_pie, ax_pie = plt.subplots(figsize=(4, 4))
+                    labels = ['Erfolgreich', 'Fehlgeschlagen']
+                    sizes = [total_success, total_errors]
+                    colors = ['#2ca02c', '#d62728'] # Grün und Rot
+                    
+                    # Ein schickes Donut-Chart (Pie Chart mit Loch)
+                    ax_pie.pie(sizes, labels=labels, autopct='%1.1f%%', startangle=90, colors=colors,
+                               wedgeprops=dict(width=0.4, edgecolor='w'))
+                    ax_pie.set_title("Verhältnis erfolgreicher Tasks")
+                    st.pyplot(fig_pie)
 
     # TAB 3: FEHLER-LOG
     with tab3:
