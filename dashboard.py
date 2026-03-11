@@ -136,15 +136,29 @@ def show_data():
         if results_list:
             flat_data = []
             for r in results_list:
-                row = {"_id": str(r["_id"]), "url": r.get("url"), "scraped_at": r.get("scraped_at")}
-                if "data" in r:
-                    row.update(r["data"])
-                flat_data.append(row)
-            df = pd.DataFrame(flat_data)
-            st.dataframe(df, use_container_width=True)
-        else:
-            st.info("Noch keine Ergebnisse in der Datenbank.")
+                # Basis-Daten für jede Zeile
+                base_row = {"url": r.get("url", ""), "scraped_at": r.get("scraped_at", "")}
+                data_field = r.get("data", {})
+            
+                # Fall 1: Das Datenbankfeld "data" ist eine Liste (unsere alten Ausrutscher)
+                if isinstance(data_field, list):
+                    for item in data_field:
+                        row = base_row.copy()
+                        if isinstance(item, dict):
+                            row.update(item)
+                        flat_data.append(row)
+                    
+                # Fall 2: Das Datenbankfeld "data" ist ein normales Dictionary (der saubere Standard)
+                elif isinstance(data_field, dict):
+                    row = base_row.copy()
+                    row.update(data_field)
+                    flat_data.append(row)
 
+            if flat_data:
+                df = pd.DataFrame(flat_data)
+                st.dataframe(df, use_container_width=True)
+            else:
+                st.info("Noch keine Daten vorhanden.")
     with tab2:
         st.subheader("Zuletzt fehlgeschlagene Tasks")
         errors_cursor = db["failed_tasks"].find().sort("_id", -1).limit(50)

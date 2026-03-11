@@ -1,18 +1,29 @@
-from .base import BaseParser
 from bs4 import BeautifulSoup
+from parsers.base import BaseParser
 
 class QuoteParser(BaseParser):
-    async def parse(self, html: str) -> dict:
+    async def parse(self, html: str) -> list:
         soup = BeautifulSoup(html, 'html.parser')
+        results = []
         
-        # Wir nehmen das erste Zitat auf der Seite
-        first_quote = soup.find('div', class_='quote')
-        if not first_quote:
-            return {}
+        # Finde alle Zitat-Blöcke auf der Seite
+        quotes = soup.find_all('div', class_='quote')
+        
+        for quote in quotes:
+            text_tag = quote.find('span', class_='text')
+            text = text_tag.text.strip() if text_tag else None
             
-        return {
-            "text": first_quote.find('span', class_='text').text,
-            "author": first_quote.find('small', class_='author').text,
-            "tags": [tag.text for tag in first_quote.find_all('a', class_='tag')],
-            "type": "quote" # Damit wir in der DB wissen, was es ist
-        }
+            author_tag = quote.find('small', class_='author')
+            author = author_tag.text.strip() if author_tag else None
+            
+            # Alle Tags dieses spezifischen Zitats sammeln
+            tags = [tag.text.strip() for tag in quote.find_all('a', class_='tag')]
+            
+            results.append({
+                "type": "quotes",
+                "text": text,
+                "author": author,
+                "tags": tags
+            })
+            
+        return results

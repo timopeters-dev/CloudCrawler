@@ -1,25 +1,32 @@
 import re
-from .base import BaseParser
 from bs4 import BeautifulSoup
+from parsers.base import BaseParser
 
 class BookParser(BaseParser):
-    async def parse(self, html: str) -> dict:
+    async def parse(self, html: str) -> list:
         soup = BeautifulSoup(html, 'html.parser')
-        book = soup.find('article', class_='product_pod')
-        if not book:
-            return {}
-
-        raw_price = book.find('p', class_='price_color').text
+        results = []
         
-        # --- REGEX ACTION ---
-        # Wir suchen nach einer Zahl, gefolgt von einem Punkt und zwei Dezimalstellen
-        # Entspricht Aufgabe 1 & 5 aus deinem Übungsblatt!
-        price_match = re.search(r'(\d+\.\d+)', raw_price)
-        price_float = float(price_match.group(1)) if price_match else 0.0
-
-        return {
-            "title": book.h3.a['title'],
-            "price": price_float,  # Jetzt als echte Zahl (float)
-            "currency": "GBP",
-            "type": "book"
-        }
+        # Finde alle Bücher-Kacheln auf der Seite
+        articles = soup.find_all('article', class_='product_pod')
+        
+        for article in articles:
+            # Titel extrahieren (aus dem 'title' Attribut des <a> Tags)
+            title_tag = article.find('h3').find('a')
+            title = title_tag['title'] if title_tag and 'title' in title_tag.attrs else None
+            
+            # Preis über Regex extrahieren (wie in Übungsblatt 4)
+            price_tag = article.find('p', class_='price_color')
+            price = None
+            if price_tag:
+                match = re.search(r'(\d+\.\d+)', price_tag.text)
+                if match:
+                    price = float(match.group(1))
+                    
+            results.append({
+                "type": "books",
+                "title": title,
+                "price": price
+            })
+            
+        return results
