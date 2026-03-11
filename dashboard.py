@@ -171,5 +171,20 @@ def show_data():
         else:
             st.success("Keine fehlerhaften Tasks gefunden. Alles läuft super!")
 
+# --- DANGER ZONE (In der Sidebar) ---
+st.sidebar.markdown("---")
+st.sidebar.subheader("⚠️ Danger Zone")
+
+# Ein Klick auf den Button leert die Collections
+if st.sidebar.button("🗑️ Datenbank leeren", type="primary"):
+    with st.spinner("Lösche alle Dokumente..."):
+        # Löscht alle Einträge aus 'results' und 'failed_tasks'
+        db["results"].delete_many({})
+        db["failed_tasks"].delete_many({})
+        
+    st.sidebar.success("Datenbank erfolgreich geleert!")
+    # Lade die Seite neu, damit die leere Tabelle sofort angezeigt wird
+    st.rerun()
+
 # Fragment aufrufen
 show_data()
