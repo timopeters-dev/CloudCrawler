@@ -1,5 +1,4 @@
 name: cloud_crawler
-
 services:
   mongodb:
     image: mongo:latest
@@ -7,7 +6,6 @@ services:
       - "27017:27017"
     volumes:
       - mongo_data:/data/db
-
   localstack:
     image: localstack/localstack
     ports:
@@ -16,7 +14,6 @@ services:
       - SERVICES=sqs
     volumes:
       - "./localstack_data:/var/lib/localstack:z"
-
   init-sqs:
     build: .
     depends_on:
@@ -27,7 +24,6 @@ services:
       - AWS_SECRET_ACCESS_KEY=test
       - AWS_DEFAULT_REGION=us-east-1
     command: python infrastructure/setup_sqs.py
-
   worker:
     build: .
     depends_on:
@@ -40,7 +36,6 @@ services:
       - AWS_ACCESS_KEY_ID=test
       - AWS_SECRET_ACCESS_KEY=test
       - AWS_DEFAULT_REGION=us-east-1
-
   autoscaler:
     build: .
     depends_on:
@@ -53,12 +48,11 @@ services:
       - AWS_ACCESS_KEY_ID=test
       - AWS_SECRET_ACCESS_KEY=test
       - AWS_DEFAULT_REGION=us-east-1
-      - COMPOSE_PROJECT_NAME=cloud_crawler 
+      - COMPOSE_PROJECT_NAME=cloud_crawler
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:z
-      - ./docker-compose.yml:/app/docker-compose.yml:ro,z 
+      - ./docker-compose.yml:/app/docker-compose.yml:ro,z
     command: python -u src/autoscaler.py
-
   dashboard:
     build: .
     ports:
@@ -76,8 +70,7 @@ services:
       - AWS_DEFAULT_REGION=us-east-1
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro,z
-      - ./dashboard.py:/app/dashboard.py:ro,z 
+      - ./dashboard.py:/app/dashboard.py:ro,z
     command: streamlit run dashboard.py --server.address=0.0.0.0
-
 volumes:
   mongo_data:
