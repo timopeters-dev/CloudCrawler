@@ -1,5 +1,6 @@
-from pymongo import MongoClient
 import pprint
+
+from pymongo import MongoClient
 
 client = MongoClient("mongodb://localhost:27017")
 db = client["crawler_db"]

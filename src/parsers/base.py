@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
 
+
 class BaseParser(ABC):
     @abstractmethod
     async def parse(self, html: str) -> dict:
