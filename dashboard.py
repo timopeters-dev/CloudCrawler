@@ -34,15 +34,22 @@ st.title("🕷️ Cloud Crawler Dashboard")
 
 @st.fragment(run_every="2s")
 def show_metrics():
-    q_len = 0
+    q_len, w_count = 0, "N/A"
     if queue_url:
         res = sqs.get_queue_attributes(QueueUrl=queue_url, AttributeNames=["ApproximateNumberOfMessages"])
         q_len = int(res["Attributes"]["ApproximateNumberOfMessages"])
+    
+    try:
+        import docker
+        client = docker.from_env()
+        w_count = len([c for c in client.containers.list() if "worker" in c.name])
+    except: pass
 
-    c1, c2, c3 = st.columns(3)
+    c1, c2, c3, c4 = st.columns(4)
     c1.metric("Warteschlange", q_len)
-    c2.metric("Ergebnisse", db["results"].count_documents({}))
-    c3.metric("Fehler", db["failed_tasks"].count_documents({}))
+    c2.metric("Worker", w_count)
+    c3.metric("Ergebnisse", db["results"].count_documents({}))
+    c4.metric("Fehler", db["failed_tasks"].count_documents({}))
 
 show_metrics()
 st.divider()
