@@ -131,10 +131,58 @@ def show_data():
     with t1:
         st.dataframe(df, use_container_width=True)
     with t2:
-        if not df.empty and "price" in df.columns:
-            fig, ax = plt.subplots()
-            sns.histplot(pd.to_numeric(df["price"], errors="coerce").dropna(), kde=True, ax=ax)
-            st.pyplot(fig)
+        if df.empty:
+            st.info("Noch keine Daten für eine Analyse vorhanden.")
+        else:
+            # --- Metriken ---
+            m1, m2, m3 = st.columns(3)
+            m1.metric("Eindeutige URLs", df["url"].nunique())
+            m3.metric("Gescrapte Items", len(df))
+            if "price" in df.columns:
+                avg_p = pd.to_numeric(df["price"], errors="coerce").mean()
+                m2.metric("Ø Preis", f"£{avg_p:.2f}" if not pd.isna(avg_p) else "N/A")
+            
+            st.divider()
+
+            # --- Timeline: Scraping Aktivität ---
+            st.subheader("⏱️ Scraping-Aktivität")
+            df["dt"] = pd.to_datetime(df["Zeit"])
+            timeline = df.set_index("dt").resample("10S").size()
+            st.line_chart(timeline)
+
+            st.divider()
+
+            # --- Spalten-Layout für Charts ---
+            c1, c2 = st.columns(2)
+
+            with c1:
+                if "price" in df.columns:
+                    st.subheader("💰 Preisverteilung")
+                    prices = pd.to_numeric(df["price"], errors="coerce").dropna()
+                    if not prices.empty:
+                        fig, ax = plt.subplots(figsize=(6, 4))
+                        sns.histplot(prices, kde=True, color="skyblue", ax=ax)
+                        st.pyplot(fig)
+
+                if "author" in df.columns:
+                    st.subheader("✍️ Top Autoren")
+                    st.bar_chart(df["author"].value_counts().head(10))
+
+            with c2:
+                if "tags" in df.columns:
+                    st.subheader("🏷️ Beliebteste Tags")
+                    # Explode list of tags if they are stored as lists
+                    tags_series = df.explode("tags")["tags"] if isinstance(df["tags"].iloc[0], list) else df["tags"]
+                    st.bar_chart(tags_series.value_counts().head(10))
+                
+                # System Gesundheit
+                st.subheader("⚙️ System-Status")
+                s_count = db["results"].count_documents({})
+                f_count = db["failed_tasks"].count_documents({})
+                if s_count + f_count > 0:
+                    fig, ax = plt.subplots(figsize=(4, 4))
+                    ax.pie([s_count, f_count], labels=["Erfolg", "Fehler"], autopct='%1.1f%%', colors=["#2ecc71", "#e74c3c"])
+                    st.pyplot(fig)
     with t3:
         errors = list(db["failed_tasks"].find().sort("_id", -1).limit(20))
         for e in errors:
