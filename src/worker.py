@@ -65,7 +65,8 @@ class UniversalWorker:
                             # Dynamischer Parser zieht sich die Selektoren aus der SQS Nachricht
                             parser = DynamicParser()
                             selectors = body.get("selectors", {})
-                            data = await parser.parse(res.text, selectors)
+                            row_selector = body.get("row_selector")
+                            data = await parser.parse(res.text, selectors, row_selector)
                         else:
                             parser = self.parsers.get(task_type)
                             if not parser:

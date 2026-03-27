@@ -9,9 +9,9 @@ Dieses System nutzt eine Microservice-Architektur (Producer-Consumer-Pattern), u
 * **Asynchrones Scraping:** Hoher Durchsatz dank `asyncio` und `httpx`.
 * **Verteilte Architektur:** Entkopplung von Auftragsvergabe und Verarbeitung via **Amazon SQS** (lokal emuliert durch LocalStack).
 * **Auto-Scaling:** Ein nativer Python-Autoscaler überwacht die SQS-Warteschlange und skaliert die Docker-Worker-Container dynamisch nach oben oder unten.
-* **Dynamische Parser-Engine:** Scraping-Regeln (CSS-Selektoren) können zur Laufzeit über das Dashboard definiert werden, ohne den Quellcode zu verändern.
+* **Dynamische Parser-Engine (Box-in-Box):** Flexible Extraktions-Regeln können zur Laufzeit über das Dashboard definiert werden. Unterstützt sowohl Einzelseiten als auch Listen/Tabellen durch einen kaskadierenden Selektor-Ansatz.
 * **Resilienz & Dead-Letter-Queue:** Permanente Fehler (wie HTTP 404) werden abgefangen und in einer separaten MongoDB-Collection (`failed_tasks`) protokolliert, um Queue-Endlosschleifen zu verhindern.
-* **Interaktives Dashboard:** Eine Echtzeit-Benutzeroberfläche auf Basis von Streamlit zur Steuerung und Datenauswertung.
+* **Interaktives Dashboard:** Eine Echtzeit-Benutzeroberfläche auf Basis von Streamlit zur Steuerung, Überwachung und Daten-Visualisierung.
 
 ## 🏗️ Systemarchitektur
 
@@ -28,63 +28,61 @@ Dieses System nutzt eine Microservice-Architektur (Producer-Consumer-Pattern), u
 ### Voraussetzungen
 Sicherstellen, dass folgende Software auf deinem System installiert ist:
 * **Docker** und **Docker Compose**
-* *(Optional: Git, um das Repository zu klonen)*
 
 ### Installation & Ausführung
 
-**1. Repository klonen (oder Verzeichnis öffnen):**
+**1. Repository öffnen:**
 ```bash
-git clone https://github.com/timopeters-dev/CloudCrawler.git
 cd cloud_crawler
 ```
 
 **2. Infrastruktur und Container starten:**
-Das System wird komplett über Docker Compose orchestriert. Führe folgenden Befehl aus, um alle Services im Hintergrund zu bauen und zu starten:
+Das System wird komplett über Docker Compose orchestratiert.
 ```bash
 docker compose up -d --build
 ```
-*(Hinweis: Beim ersten Start lädt Docker die benötigten Images herunter und richtet die Multi-Stage Builds ein. Dies kann ein bis zwei Minuten dauern.)*
 
 **3. Dashboard aufrufen:**
-Sobald die Container laufen, ist das interaktive Dashboard unter folgender URL erreichbar:
 👉 **[http://localhost:8501](http://localhost:8501)**
 
 ---
 
 ## 💻 Nutzung des Dashboards
 
-Über das Control Panel im Dashboard können neue Scraping-Aufgaben gestartet werden:
+### 1. Vorgefertigte Parser
+Wähle den Typ `books` oder `quotes` für bekannte Testseiten (z. B. `http://books.toscrape.com`).
 
-1. **Vorgefertigte Parser testen:** Als Typ `books` oder `quotes` auswählen und  eine Basis-URL eingeben (z. B. `http://books.toscrape.com/catalogue/page-{}.html`). Gib die Anzahl der Seiten an und klicke auf "In die Queue schieben".
-2. **Dynamischen Parser testen (Custom Scraping):**
-   Den Typ `dynamic` wählen und  den **➕ Button** nutzen, um beliebig viele Felder anzulegen. Anschließend den gewünschten Feldnamen (z. B. `titel`) und den passenden CSS-Selektor (z. B. `h1`) eingeben. Die Worker extrahieren die Daten exakt nach diesen Vorgaben.
+### 2. Dynamischer Parser (Box-in-Box Extraktion) 🆕
+Der neue dynamische Parser erlaubt das Scrapen von komplexen Listen und Tabellen:
 
-Unter dem Reiter **"📊 Ergebnisse"** tauchen die gescrapten Daten in Echtzeit als flache Tabelle auf.
+*   **Row-Selector:** Gib hier den gemeinsamen Container für sich wiederholende Elemente an (z. B. `tr.team-row` für Tabellen oder `article.product_pod` für Produktlisten).
+*   **Feld-Selektoren:** Definiere die Felder relativ zur "Row" (z. B. `td.name` oder `h3 a`).
+*   **Fallback:** Bleibt der Row-Selector leer, wird die gesamte Seite als ein einziger Container behandelt (ideal für einfache Info-Seiten).
+
+Die Worker extrahieren automatisch alle gefundenen Elemente und speichern sie als separate Dokumente in der MongoDB.
 
 ## 🛑 Beenden der Anwendung
 
-Um das System herunterzufahren und alle Container zu stoppen,  im Projektverzeichnis folgenden Befehl ausführen:
 ```bash
 docker compose down
 ```
-*(Die MongoDB-Daten bleiben durch das gemountete Volume `mongo_data` bei einem Neustart erhalten.)*
 
 ## 📂 Projektstruktur
 
 ```text
 cloud_crawler/
 ├── docker-compose.yml       # Docker-Orchestrierung
-├── Dockerfile               # Multi-Stage Build Bauplan für Worker & Autoscaler
+├── Dockerfile               # Multi-Stage Build Bauplan
 ├── requirements.txt         # Python-Abhängigkeiten
 ├── dashboard.py             # Streamlit Benutzeroberfläche
-├── infrastructure/
-│   └── setup_sqs.py         # Skript zur Initialisierung der SQS-Queue
-└── src/
-    ├── worker.py            # Asynchrone Worker-Logik
+├── tests/
+│   └── test_dynamic_parser.py # Unit-Tests für die Parser-Logik
+├── src/
+    ├── worker.py            # Asynchrone Worker-Logik (Consumer)
     ├── autoscaler.py        # Logik für das Docker-Auto-Scaling
     └── parsers/
-        ├── base.py          # Abstrakte Basisklasse für das Strategie-Muster
-        ├── book_parser.py   # Statischer Parser inkl. Regex-Extraktion
-        ├── quote_parser.py  # Statischer Parser für Zitate
-        └── dynamic_parser.py# Verarbeitet CSS-Selektoren aus der SQS-Nachricht
+        ├── base.py          # Abstrakte Basisklasse
+        ├── book_parser.py   # Statischer Parser (Bücher)
+        ├── quote_parser.py  # Statischer Parser (Zitate)
+        └── dynamic_parser.py# Neuer Box-in-Box Parser
 ```

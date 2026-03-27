@@ -100,11 +100,14 @@ with st.container():
         msg_count = st.number_input("Anzahl", min_value=1, max_value=1000, value=1)
 
     custom_selectors = {}
+    row_selector = None
 
     if task_type == "dynamic":
         st.info(
             "🛠️ Custom Parser: Definiere beliebig viele Felder und ihre CSS-Selektoren."
         )
+        
+        row_selector = st.text_input("Row-Selector (z.B. 'tr.team' oder 'article.product')", key="row_sel")
 
         for i in range(st.session_state.field_count):
             col_x, col_y = st.columns(2)
@@ -135,6 +138,8 @@ with st.container():
                     message_body = {"url": target_url, "type": task_type}
                     if task_type == "dynamic":
                         message_body["selectors"] = custom_selectors
+                        if row_selector:
+                            message_body["row_selector"] = row_selector
 
                     sqs.send_message(
                         QueueUrl=queue_url, MessageBody=json.dumps(message_body)

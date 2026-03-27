@@ -2,37 +2,30 @@ from bs4 import BeautifulSoup
 
 
 class DynamicParser:
-    async def parse(self, html: str, selectors: dict) -> list:
+    async def parse(self, html: str, selectors: dict, row_selector: str = None) -> list:
         """
-        Extrahiert alle gefundenen Elemente und gibt eine Liste von Dictionaries zurück.
+        Extrahiert Daten mit einem "Box-in-Box" Ansatz.
+        - row_selector: Wenn vorhanden, werden alle Vorkommen gesucht (z.B. 'tr' für Tabellenzeilen).
+        - selectors: Dictionary mit Feldname -> CSS Selektor (relativ zur Row).
         """
         soup = BeautifulSoup(html, "html.parser")
 
-        # 1. Alle Elemente pro Selektor in Listen sammeln
-        extracted_data = {}
-        max_length = 0
+        # Bestimme die Container (Rows)
+        if row_selector:
+            containers = soup.select(row_selector)
+        else:
+            # Fallback: Das ganze Dokument ist ein einziger Container
+            containers = [soup]
 
-        for field_name, css_selector in selectors.items():
-            elements = soup.select(css_selector)
-            # Extrahiere den Text aus jedem gefundenen Element
-            texts = [el.text.strip() for el in elements]
-            extracted_data[field_name] = texts
-
-            # Merken, was die längste gefundene Liste ist (z.B. 20 Bücher)
-            if len(texts) > max_length:
-                max_length = len(texts)
-
-        # 2. Die gesammelten Spalten zu einzelnen Objekten (Zeilen) "zippen"
         results = []
-        for i in range(max_length):
-            item = {"type": "dynamic_custom"}
-            for field_name in selectors.keys():
-                # Falls eine Liste kürzer ist (z.B. ein Buch hat keinen Autor), trage None ein
-                item[field_name] = (
-                    extracted_data[field_name][i]
-                    if i < len(extracted_data[field_name])
-                    else None
-                )
-            results.append(item)
+        for container in containers:
+            item = {}
+            for field_name, css_selector in selectors.items():
+                element = container.select_one(css_selector)
+                item[field_name] = element.text.strip() if element else None
 
-        return results  # Wir geben jetzt eine Liste zurück!
+            # Nur hinzufügen, wenn mindestens ein Feld gefunden wurde
+            if any(value is not None for value in item.values()):
+                results.append(item)
+
+        return results
