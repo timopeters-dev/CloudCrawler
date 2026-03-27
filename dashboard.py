@@ -49,14 +49,38 @@ st.divider()
 
 st.subheader("🚀 Neue Aufgabe")
 with st.container():
-    c1, c2, c3 = st.columns([3, 1, 1])
-    url = c1.text_input("URL", "http://books.toscrape.com/catalogue/page-{}.html")
-    p_type = c2.selectbox("Parser", ["books", "quotes", "dynamic"])
-    count = c3.number_input("Anzahl", 1, 1000, 1)
+    c_type, c_url, c_count = st.columns([1, 3, 1])
+    p_type = c_type.selectbox("Parser", ["books", "quotes", "dynamic"])
+    
+    # Default URLs
+    default_urls = {
+        "books": "http://books.toscrape.com/catalogue/page-{}.html",
+        "quotes": "https://quotes.toscrape.com/page/{}/",
+        "dynamic": "https://www.scrapethissite.com/pages/forms/?page_num={}"
+    }
+
+    # Change Detection & Presets
+    if "last_p_type" not in st.session_state:
+        st.session_state.last_p_type = p_type
+
+    if st.session_state.last_p_type != p_type:
+        st.session_state.last_p_type = p_type
+        if p_type == "dynamic":
+            st.session_state.field_keys = [0, 1, 2]
+            st.session_state.f_0, st.session_state.s_0 = "name", "td.name"
+            st.session_state.f_1, st.session_state.s_1 = "wins", "td.wins"
+            st.session_state.f_2, st.session_state.s_2 = "losses", "td.losses"
+            st.session_state.row_sel_val = "tr.team"
+        st.rerun()
+
+    url = c_url.text_input("URL", default_urls.get(p_type, ""))
+    count = c_count.number_input("Anzahl", 1, 1000, 1)
 
     selectors, row_sel = {}, None
     if p_type == "dynamic":
-        row_sel = st.text_input("Row Selector (optional)", placeholder="z.B. tr.team")
+        row_sel = st.text_input("Row Selector (optional)", 
+                               value=st.session_state.get("row_sel_val", ""), 
+                               placeholder="z.B. tr.team")
         if "field_keys" not in st.session_state: st.session_state.field_keys = [0]
         
         for i in st.session_state.field_keys:
