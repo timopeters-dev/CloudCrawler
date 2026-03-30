@@ -23,6 +23,6 @@ if __name__ == "__main__":
             if n > 20: scale(5)
             elif n > 0: scale(2)
             else: scale(1)
-        except:
-            pass
+        except Exception as e:
+            print(f"[!] Fehler im Autoscaler: {e}")
         time.sleep(10)

@@ -169,7 +169,7 @@ def show_data():
                     st.bar_chart(df["author"].value_counts().head(10))
 
             with c2:
-                if "tags" in df.columns:
+                if "tags" in df.columns and not df.empty:
                     st.subheader("🏷️ Beliebteste Tags")
                     # Explode list of tags if they are stored as lists
                     tags_series = df.explode("tags")["tags"] if isinstance(df["tags"].iloc[0], list) else df["tags"]

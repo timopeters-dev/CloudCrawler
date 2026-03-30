@@ -8,8 +8,9 @@ Dieses System nutzt eine Microservice-Architektur (Producer-Consumer-Pattern), u
 
 * **Asynchrones Scraping:** Hoher Durchsatz dank `asyncio` und `httpx`.
 * **Verteilte Architektur:** Entkopplung von Auftragsvergabe und Verarbeitung via **Amazon SQS** (lokal emuliert durch LocalStack).
-* **Auto-Scaling:** Ein nativer Python-Autoscaler überwacht die SQS-Warteschlange und skaliert die Docker-Worker-Container dynamisch nach oben oder unten.
-* **Dynamische Parser-Engine (Box-in-Box):** Flexible Extraktions-Regeln können zur Laufzeit über das Dashboard definiert werden. Unterstützt sowohl Einzelseiten als auch Listen/Tabellen durch einen kaskadierenden Selektor-Ansatz.
+*   **Auto-Scaling:** Ein nativer Python-Autoscaler überwacht die SQS-Warteschlange und skaliert die Docker-Worker-Container dynamisch nach oben oder unten.
+*   **Sicherheit & Credentials:** Das Projekt nutzt für die lokale Entwicklung (LocalStack) Standard-Zugangsdaten (`test`/`test`). In einer Produktionsumgebung würden diese durch Umgebungsvariablen oder einen Secrets Manager ersetzt.
+*   **Dynamische Parser-Engine (Box-in-Box):** Flexible Extraktions-Regeln können zur Laufzeit über das Dashboard definiert werden. Unterstützt sowohl Einzelseiten als auch Listen/Tabellen durch einen kaskadierenden Selektor-Ansatz.
 * **Resilienz & Dead-Letter-Queue:** Permanente Fehler (wie HTTP 404) werden abgefangen und in einer separaten MongoDB-Collection (`failed_tasks`) protokolliert, um Queue-Endlosschleifen zu verhindern.
 * **Interaktives Dashboard:** Eine Echtzeit-Benutzeroberfläche auf Basis von Streamlit zur Steuerung, Überwachung und Daten-Visualisierung.
 

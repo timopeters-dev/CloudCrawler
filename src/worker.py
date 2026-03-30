@@ -40,15 +40,16 @@ class UniversalWorker:
             while True:
                 response = self.sqs.receive_message(
                     QueueUrl=queue_url, 
-                    MaxNumberOfMessages=1, 
-                    WaitTimeSeconds=5
+                    MaxNumberOfMessages=10, 
+                    WaitTimeSeconds=10
                 )
 
                 if "Messages" not in response:
                     continue
 
-                for msg in response["Messages"]:
-                    await self._process_message(client, queue_url, msg)
+                # Parallele Verarbeitung von Nachrichten für höheren Durchsatz
+                tasks = [self._process_message(client, queue_url, msg) for msg in response["Messages"]]
+                await asyncio.gather(*tasks)
 
     async def _get_queue_url(self):
         while True:

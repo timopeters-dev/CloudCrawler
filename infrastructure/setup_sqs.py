@@ -15,8 +15,8 @@ def setup_sqs():
             sqs.create_queue(QueueName="scraping-tasks")
             logging.info("SQS bereit")
             return
-        except:
+        except Exception as e:
+            logging.warning(f"Versuch {_+1}/10: SQS noch nicht bereit ({e})")
             time.sleep(3)
-
 if __name__ == "__main__":
     setup_sqs()
