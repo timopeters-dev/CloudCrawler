@@ -75,9 +75,11 @@ cloud_crawler/
 ├── Dockerfile               # Multi-Stage Build Bauplan
 ├── requirements.txt         # Python-Abhängigkeiten
 ├── dashboard.py             # Streamlit Benutzeroberfläche
+├── infrastructure/
+│   └── setup_sqs.py         # Initialisierung der SQS-Queue
 ├── tests/
 │   └── test_dynamic_parser.py # Unit-Tests für die Parser-Logik
-├── src/
+└── src/
     ├── worker.py            # Asynchrone Worker-Logik (Consumer)
     ├── autoscaler.py        # Logik für das Docker-Auto-Scaling
     └── parsers/
