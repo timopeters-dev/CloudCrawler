@@ -1,7 +1,8 @@
 from bs4 import BeautifulSoup
 
+
 class DynamicParser:
-    async def parse(self, html: str, selectors: dict, row_selector: str = None) -> list:
+    async def parse(self, html: str, selectors: dict, row_selector: str = "") -> list:
         """
         Extrahiert Daten basierend auf flexiblen CSS-Selektoren.
         Unterstützt Listen (via row_selector) oder Einzelwerte (Standard).
